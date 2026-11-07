@@ -1,0 +1,8 @@
+{
+  "name": "冬至 · 岁暮向暖 | 电影质感冬至体验",
+  "description": "以电影级胶片质感与光影叙事，呈现冬至节气的深厚底蕴、暖冬烟火、九九消寒图与定制光影贺卡工坊。",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

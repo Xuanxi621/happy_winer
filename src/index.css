@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-serif: 'Noto Serif SC', 'Songti SC', SimSun, serif;
+    --font-kuaile: 'ZCOOL KuaiLe', cursive, sans-serif;
+    --font-huangyou: 'ZCOOL QingKe HuangYou', cursive, sans-serif;
+    --font-longcang: 'Long Cang', cursive, serif;
+    --font-xiaowei: 'ZCOOL XiaoWei', 'Noto Serif SC', serif;
+    --font-calligraphy: 'Ma Shan Zheng', cursive, serif;
+  }
+
+  body {
+    background-color: #07070a;
+    color: #e2e4ec;
+  }
+
+  .font-kuaile {
+    font-family: var(--font-kuaile);
+  }
+
+  .font-huangyou {
+    font-family: var(--font-huangyou);
+  }
+
+  .font-longcang {
+    font-family: var(--font-longcang);
+  }
+
+  .font-xiaowei {
+    font-family: var(--font-xiaowei);
+  }
+
+  .font-calligraphy {
+    font-family: var(--font-calligraphy);
+  }
+}
+
+/* Cinematic film grain with subtle organic flicker */
+@keyframes filmNoise {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-1.5%, 1%); }
+  40% { transform: translate(1%, -1.5%); }
+  60% { transform: translate(-1%, 1.5%); }
+  80% { transform: translate(1.5%, -1%); }
+}
+
+.film-grain-active::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  pointer-events: none;
+  opacity: 0.085;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  animation: filmNoise 0.35s steps(3) infinite;
+  z-index: 15;
+}
+
+/* Cinematic slow breathing Ken Burns */
+@keyframes slowDrift {
+  0% {
+    transform: scale(1.52) translate(0, 0);
+  }
+  50% {
+    transform: scale(1.55) translate(-0.8%, -0.4%);
+  }
+  100% {
+    transform: scale(1.52) translate(0, 0);
+  }
+}
+
+.animate-slow-cinematic {
+  animation: slowDrift 24s ease-in-out infinite alternate;
+}
+
+/* Pure artistic text glow and shadow */
+.text-cinematic-glow {
+  text-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.95),
+    0 4px 24px rgba(0, 0, 0, 0.95),
+    0 0 40px rgba(255, 215, 160, 0.35);
+}
+
+.text-gold-gradient {
+  background: linear-gradient(180deg, #ffffff 0%, #fff4e0 60%, #ffdca8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 35mm Film Grain Overlay */
+.film-grain {
+  position: relative;
+}
+
+.film-grain::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.055;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  z-index: 10;
+}
+
+/* Widescreen 2.39:1 / 2.35:1 Cinematic Aspect */
+.aspect-cinemascope {
+  aspect-ratio: 2.39 / 1;
+}
+
+/* Vertical Text for Chinese Poetry & Calligraphy Seals */
+.writing-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.28em;
+}
+
+/* Film Subtitle Bar */
+.film-subtitle-bar {
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Cinematic Glow & Vignette */
+.cinematic-vignette {
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.85), inset 0 0 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Steaming effect keyframe */
+@keyframes steamDrift {
+  0% {
+    transform: translateY(0) scaleX(1);
+    opacity: 0.15;
+  }
+  50% {
+    transform: translateY(-24px) scaleX(1.3) skewX(2deg);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateY(-56px) scaleX(1.8) skewX(-3deg);
+    opacity: 0;
+  }
+}
+
+.animate-steam {
+  animation: steamDrift 3.5s ease-out infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0c0d12;
+}
+::-webkit-scrollbar-thumb {
+  background: #252834;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3b3f52;
+}
