@@ -2,20 +2,36 @@
 <html lang="zh-CN" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) non-zero on iOS -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
+    />
     <title>憨憨颜 冬至快乐</title>
     <meta name="description" content="以电影级胶片质感与光影叙事，呈现冬至节气的深厚底蕴、暖冬烟火、九九消寒图与定制光影贺卡工坊。" />
+    <meta name="theme-color" content="#0c0906" />
+    <meta name="format-detection" content="telephone=no" />
+    <!-- iOS standalone / status bar tint -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta property="og:title" content="冬至 · 岁暮向暖 | 电影光影物语" />
     <meta property="og:description" content="以电影级胶片质感与光影叙事，呈现冬至节气的深厚底蕴、暖冬烟火、九九消寒图与定制光影贺卡工坊。" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- Poster is the first paint for the full-screen hero: fetch it early. -->
+    <link
+      rel="preload"
+      as="image"
+      href="/assets/aistudio/cat_poster_1080.jpg"
+      fetchpriority="high"
+    />
+    <link rel="preconnect" href="https://cdn.videotourl.net" crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Long+Cang&family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@300;400;600&family=ZCOOL+KuaiLe&family=ZCOOL+QingKe+HuangYou&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-[#0b0c10] text-[#e6e8ee] antialiased selection:bg-[#c43c35] selection:text-white overflow-x-hidden">
+  <body class="bg-[#0b0c10] text-[#e6e8ee] antialiased selection:bg-[#c43c35] selection:text-white overflow-hidden">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

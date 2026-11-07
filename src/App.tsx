@@ -1,61 +1,206 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-const POSTER_SRC = '/assets/aistudio/cat_poster.jpg';
-const FAST_VIDEO_SRC = '/assets/aistudio/cat_video_fast.mp4';
-const ORIGINAL_VIDEO_SRC = '/assets/aistudio/___________-_____6886b7ae.mp4';
+/* ------------------------------------------------------------------ *
+ * Media sources
+ *
+ * The CDN copy is Byte-identical to /assets/aistudio/cat_video_fast.mp4
+ * and is served by Cloudflare with `Accept-Ranges: bytes`, so it is the
+ * most reliable "plays on any phone" entry in the fallback chain.
+ * ------------------------------------------------------------------ */
+const CDN_VIDEO = 'https://cdn.videotourl.net/videos/582e34f4-aa01-477f-b7b3-8d184feddc0c.mp4';
+const LOCAL_1080 = '/assets/aistudio/cat_video_fast.mp4';
+const LOCAL_720 = '/assets/aistudio/cat_video_720p.mp4';
+const LOCAL_480 = '/assets/aistudio/cat_video_480p.mp4';
+
+/* 1920×1080 poster (~114 KB) instead of the 4K 472 KB original: same crop,
+ * 4× fewer pixels to decode on a phone. Remote thumbnail = last-resort poster. */
+const POSTER_LOCAL = '/assets/aistudio/cat_poster_1080.jpg';
+const POSTER_REMOTE = 'https://cdn.videotourl.net/thumbnails/582e34f4-aa01-477f-b7b3-8d184feddc0c.jpg';
+
+type PlaybackStatus = 'loading' | 'playing' | 'blocked' | 'failed';
+
+interface NetworkInformationLike {
+  saveData?: boolean;
+  effectiveType?: string;
+}
+
+/** Ordered list of sources to try. First entry is the preferred one. */
+function buildVideoSources(): string[] {
+  if (typeof window === 'undefined') return [CDN_VIDEO];
+
+  const nav = navigator as Navigator & { connection?: NetworkInformationLike };
+  const conn = nav.connection;
+  const saveData = Boolean(conn?.saveData);
+  const slowNetwork = saveData || /(^|-)2g$/.test(conn?.effectiveType ?? '');
+
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const shortEdge = Math.min(window.innerWidth, window.innerHeight);
+  const isPhone = coarsePointer || shortEdge <= 820;
+
+  if (slowNetwork) return [LOCAL_480, LOCAL_720, CDN_VIDEO];
+  // Phones: lighter 720p/30 first (easy to decode, ~1.3 MB), CDN as the safety net.
+  if (isPhone) return [LOCAL_720, CDN_VIDEO, LOCAL_1080];
+  // Desktops: crisp CDN stream first, local files as fallback.
+  return [CDN_VIDEO, LOCAL_1080, LOCAL_720];
+}
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [status, setStatus] = useState<PlaybackStatus>('loading');
+  const [posterSrc, setPosterSrc] = useState<string>(POSTER_LOCAL);
 
-  // Video autoplay management
+  const isPhone = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    return coarse || Math.min(window.innerWidth, window.innerHeight) <= 820;
+  }, []);
+
+  /* ---------------- video: inline playback + source fallback chain ---------------- */
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    const element = videoRef.current;
+    if (!element) return;
+    const video: HTMLVideoElement = element;
 
+    // Keep mobile WebViews (WeChat X5, iOS Safari, Android) from replacing the
+    // element with their own fullscreen player / download chrome.
+    const inlineAttrs: Record<string, string> = {
+      'webkit-playsinline': 'true',
+      'x5-playsinline': 'true',
+      'x5-video-player-type': 'h5-page',
+      'x5-video-orientation': 'portrait',
+      'x5-video-player-fullscreen': 'false',
+    };
+    Object.keys(inlineAttrs).forEach((key) => video.setAttribute(key, inlineAttrs[key]));
     video.muted = true;
     video.defaultMuted = true;
-    (video as unknown as { playsInline?: boolean }).playsInline = true;
+    video.playsInline = true;
 
-    const handlePlaying = () => setIsPlaying(true);
-    video.addEventListener('playing', handlePlaying);
+    const chain = buildVideoSources();
+    let index = 0;
+    let disposed = false;
+    let exhausted = false;
+    let stallTimer: number | undefined;
+    let gestureHandler: (() => void) | null = null;
 
-    video.play().then(() => {
-      setIsPlaying(true);
-    }).catch(() => {
-      // Deferred until touch/click
-    });
-
-    const unlockPlay = () => {
-      if (video.paused) {
-        video.play().then(() => setIsPlaying(true)).catch(() => {});
+    function clearStall() {
+      if (stallTimer !== undefined) {
+        window.clearTimeout(stallTimer);
+        stallTimer = undefined;
       }
-    };
+    }
 
-    window.addEventListener('click', unlockPlay, { once: true });
-    window.addEventListener('touchstart', unlockPlay, { once: true });
+    function disarmGesture() {
+      if (!gestureHandler) return;
+      (['touchstart', 'touchend', 'pointerdown', 'click', 'keydown'] as const).forEach((evt) =>
+        window.removeEventListener(evt, gestureHandler as EventListener)
+      );
+      gestureHandler = null;
+    }
+
+    function startPlayback() {
+      if (disposed) return;
+      const attempt = video.play();
+      if (attempt && typeof attempt.then === 'function') {
+        attempt
+          .then(() => {
+            if (!disposed) setStatus('playing');
+          })
+          .catch(() => {
+            // Autoplay policy blocked it: wait for the first user gesture.
+            if (disposed || exhausted) return;
+            setStatus('blocked');
+            armGestureUnlock();
+          });
+      }
+    }
+
+    function armGestureUnlock() {
+      if (gestureHandler || disposed) return;
+      const handler = () => {
+        if (disposed) return;
+        disarmGesture();
+        if (video.paused) startPlayback();
+      };
+      gestureHandler = handler;
+      (['touchstart', 'touchend', 'pointerdown', 'click', 'keydown'] as const).forEach((evt) =>
+        window.addEventListener(evt, handler as EventListener, { passive: true })
+      );
+    }
+
+    function scheduleStallCheck() {
+      clearStall();
+      // Nothing usable after a few seconds? Move on to the next source.
+      stallTimer = window.setTimeout(
+        () => {
+          if (disposed) return;
+          if (video.paused || video.readyState < 2) advance();
+        },
+        index === 0 ? 5000 : 9000
+      );
+    }
+
+    function loadCurrent() {
+      if (disposed || index >= chain.length) return;
+      video.src = chain[index];
+      video.load();
+      setStatus((prev) => (prev === 'playing' ? prev : 'loading'));
+      scheduleStallCheck();
+      startPlayback();
+    }
+
+    function advance() {
+      if (disposed) return;
+      clearStall();
+      index += 1;
+      if (index >= chain.length) {
+        exhausted = true;
+        disarmGesture();
+        setStatus('failed');
+        return;
+      }
+      loadCurrent();
+    }
+
+    const onPlaying = () => {
+      clearStall();
+      setStatus('playing');
+    };
+    const onCanPlay = () => clearStall();
+    const onError = () => advance();
+    // WeChat's X5 kernel only allows programmatic play after this bridge is ready.
+    const onWeixinReady = () => startPlayback();
+
+    video.addEventListener('playing', onPlaying);
+    video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('error', onError);
+    document.addEventListener('WeixinJSBridgeReady', onWeixinReady as EventListener, false);
+
+    loadCurrent();
 
     return () => {
-      video.removeEventListener('playing', handlePlaying);
-      window.removeEventListener('click', unlockPlay);
-      window.removeEventListener('touchstart', unlockPlay);
+      disposed = true;
+      clearStall();
+      disarmGesture();
+      video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('canplay', onCanPlay);
+      video.removeEventListener('error', onError);
+      document.removeEventListener('WeixinJSBridgeReady', onWeixinReady as EventListener, false);
     };
   }, []);
 
-  // Floating warm amber dust particles matching the kitten's golden eyes
+  /* ---------------- warm amber dust, matched to the kitten's eyes ---------------- */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let animId: number;
+    let animId = 0;
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
 
     const handleResize = () => {
-      if (!canvas) return;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
     };
@@ -71,11 +216,12 @@ export default function App() {
       twinkle: number;
     }> = [];
 
-    for (let i = 0; i < 30; i++) {
+    const count = isPhone ? 14 : 30;
+    for (let i = 0; i < count; i++) {
       particles.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        r: Math.random() * 2 + 0.8,
+        r: Math.random() * (isPhone ? 1.6 : 2) + 0.8,
         alpha: Math.random() * 0.6 + 0.2,
         speedY: Math.random() * 0.25 + 0.08,
         drift: (Math.random() - 0.5) * 0.2,
@@ -118,23 +264,12 @@ export default function App() {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animId);
     };
-  }, []);
+  }, [isPhone]);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0c0906] select-none">
-      {/* 
-        Instant fallback poster image:
-        Guarantees the cat is visible from the very first frame with 0ms delay
-      */}
-      <img
-        src={POSTER_SRC}
-        alt="憨憨颜"
-        className={`absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-700 pointer-events-none ${
-          isPlaying ? 'opacity-0' : 'opacity-100'
-        }`}
-      />
-
-      {/* Full-screen looping video background */}
+    <main className="hero-stage select-none">
+      {/* Full-bleed looping video. Source is assigned at runtime so the
+          fallback chain can swap streams without remounting the element. */}
       <video
         ref={videoRef}
         autoPlay
@@ -142,42 +277,46 @@ export default function App() {
         muted
         playsInline
         preload="auto"
-        poster={POSTER_SRC}
-        className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
-      >
-        <source src={FAST_VIDEO_SRC} type="video/mp4" />
-        <source src={ORIGINAL_VIDEO_SRC} type="video/mp4" />
-      </video>
-
-      {/* Cinematic Vignette */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/50 pointer-events-none" />
-
-      {/* 35mm Organic Film Grain */}
-      <div className="film-grain-active absolute inset-0 pointer-events-none opacity-30" />
-
-      {/* Warm ambient bokeh dust */}
-      <canvas
-        ref={canvasRef}
-        className="pointer-events-none absolute inset-0 z-10 w-full h-full"
+        poster={posterSrc}
+        disablePictureInPicture
+        controls={false}
+        aria-hidden="true"
+        className="hero-media pointer-events-none"
       />
 
-      {/* 
-        Artistic Cinematic Typography - 固定为「温暖快乐体」
-        Pure floating text with ZERO boxes and ZERO buttons.
-        Content strictly: "憨憨颜 冬至快乐 天天开心"
-        Positioned at top so it never obstructs the cat's face or big golden eyes!
-      */}
-      <div className="absolute top-10 sm:top-14 md:top-16 inset-x-0 z-20 flex flex-col items-center justify-center text-center pointer-events-none px-6">
-        {/* Main Name: 憨憨颜 */}
-        <h1 className="font-kuaile text-6xl sm:text-7xl md:text-8xl tracking-[0.16em] text-[#fff8eb] drop-shadow-[0_4px_30px_rgba(255,185,60,0.5)]">
+      {/* Instant poster: visible at 0 ms, cross-fades out once playback starts. */}
+      <img
+        src={posterSrc}
+        alt="憨憨颜"
+        decoding="async"
+        fetchPriority="high"
+        onError={() => setPosterSrc((current) => (current === POSTER_LOCAL ? POSTER_REMOTE : current))}
+        className={`hero-media pointer-events-none transition-opacity duration-700 ${
+          status === 'playing' ? 'opacity-0' : 'opacity-100'
+        }`}
+      />
+
+      {/* Cinematic vignette */}
+      <div className="hero-vignette pointer-events-none absolute inset-0" />
+
+      {/* 35mm organic film grain */}
+      <div className="hero-grain film-grain-active pointer-events-none absolute inset-0 opacity-30" />
+
+      {/* Warm ambient bokeh dust */}
+      <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-10 h-full w-full" />
+
+      {/* Floating typography — no boxes, no buttons. */}
+      <header className="hero-copy pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col items-center text-center">
+        <h1 className="hero-title font-kuaile text-[#fff8eb] drop-shadow-[0_4px_30px_rgba(255,185,60,0.5)]">
           憨憨颜
         </h1>
-
-        {/* Solstice Wish: 冬至快乐 天天开心 */}
-        <p className="mt-2.5 sm:mt-4 font-kuaile text-2xl sm:text-4xl md:text-5xl tracking-[0.18em] text-[#ffecd1] drop-shadow-[0_4px_24px_rgba(0,0,0,0.9)]">
+        <p className="hero-sub font-kuaile text-[#ffecd1] drop-shadow-[0_4px_24px_rgba(0,0,0,0.9)]">
           冬至快乐 · 天天开心
         </p>
-      </div>
-    </div>
+      </header>
+
+      {/* Only ever shown when the browser refuses to autoplay. */}
+      {status === 'blocked' && <div className="hero-hint z-30">轻触屏幕播放</div>}
+    </main>
   );
 }
